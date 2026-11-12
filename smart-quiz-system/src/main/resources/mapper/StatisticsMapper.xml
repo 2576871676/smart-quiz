@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.king.smartquiz.system.mapper.StatisticsMapper">
+
+    <!-- 答题计数：单行条件聚合 -->
+    <select id="countAnswers" resultType="org.king.smartquiz.system.vo.AnswerCountVO">
+        SELECT
+            COUNT(*)                                          AS totalCount,
+            COALESCE(SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END), 0)    AS correctCount,
+            COALESCE(SUM(CASE WHEN is_correct = 0 THEN 1 ELSE 0 END), 0)    AS wrongCount,
+            COALESCE(SUM(CASE WHEN is_correct IS NULL THEN 1 ELSE 0 END), 0) AS ungradedCount
+        FROM answer_record
+        WHERE user_id = #{userId}
+    </select>
+
+    <!-- 按题型正确率 -->
+    <select id="accuracyByType" resultType="org.king.smartquiz.system.vo.DimensionStatVO">
+        SELECT
+            CASE q.type WHEN 1 THEN '单选题' WHEN 2 THEN '多选题' WHEN 3 THEN '填空题' WHEN 4 THEN '简答题' ELSE '其他' END AS name,
+            COUNT(*) AS total,
+            COALESCE(SUM(CASE WHEN a.is_correct = 1 THEN 1 ELSE 0 END), 0) AS correct
+        FROM answer_record a
+        JOIN question q ON a.question_id = q.id
+        WHERE a.user_id = #{userId}
+        GROUP BY q.type
+        ORDER BY q.type
+    </select>
+
+    <!-- 按难度正确率 -->
+    <select id="accuracyByDifficulty" resultType="org.king.smartquiz.system.vo.DimensionStatVO">
+        SELECT
+            CASE q.difficulty WHEN 1 THEN '简单' WHEN 2 THEN '中等' WHEN 3 THEN '困难' ELSE '未设' END AS name,
+            COUNT(*) AS total,
+            COALESCE(SUM(CASE WHEN a.is_correct = 1 THEN 1 ELSE 0 END), 0) AS correct
+        FROM answer_record a
+        JOIN question q ON a.question_id = q.id
+        WHERE a.user_id = #{userId}
+        GROUP BY q.difficulty
+        ORDER BY q.difficulty
+    </select>
+
+    <!-- 按科目正确率 -->
+    <select id="accuracyBySubject" resultType="org.king.smartquiz.system.vo.DimensionStatVO">
+        SELECT
+            COALESCE(NULLIF(q.subject, ''), '未知') AS name,
+            COUNT(*) AS total,
+            COALESCE(SUM(CASE WHEN a.is_correct = 1 THEN 1 ELSE 0 END), 0) AS correct
+        FROM answer_record a
+        JOIN question q ON a.question_id = q.id
+        WHERE a.user_id = #{userId}
+        GROUP BY COALESCE(NULLIF(q.subject, ''), '未知')
+        ORDER BY total DESC
+    </select>
+
+    <!-- 最近答题趋势（按天） -->
+    <select id="trend" resultType="org.king.smartquiz.system.vo.TrendPointVO">
+        SELECT
+            DATE_FORMAT(create_time, '%Y-%m-%d') AS `date`,
+            COUNT(*) AS total,
+            COALESCE(SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END), 0) AS correct
+        FROM answer_record
+        WHERE user_id = #{userId} AND create_time &gt;= #{since}
+        GROUP BY DATE_FORMAT(create_time, '%Y-%m-%d')
+        ORDER BY `date`
+    </select>
+
+    <!-- 薄弱知识点 TOP（按答错次数降序） -->
+    <select id="weakPoints" resultType="org.king.smartquiz.system.vo.WeakPointVO">
+        SELECT
+            COALESCE(NULLIF(q.knowledge_point, ''), '未分类') AS knowledgePoint,
+            COUNT(*) AS wrongCount
+        FROM answer_record a
+        JOIN question q ON a.question_id = q.id
+        WHERE a.user_id = #{userId} AND a.is_correct = 0
+        GROUP BY COALESCE(NULLIF(q.knowledge_point, ''), '未分类')
+        ORDER BY wrongCount DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 最近 N 天答题数 -->
+    <select id="countRecent" resultType="java.lang.Integer">
+        SELECT COUNT(*)
+        FROM answer_record
+        WHERE user_id = #{userId} AND create_time &gt;= #{since}
+    </select>
+
+</mapper>
